@@ -84,17 +84,15 @@ lapply(crime[,c(1:2)], table)
 str(stop)
 lapply(stop[,c(1:7)], table)
 
-####### TIDY DATA #########
-#--Tidy crime 
+####### ANALYSE DATA #########
+#--St-level crime 
 crime |> 
     group_by(category) |>
     tally() |>
     arrange(desc(n))
     #ASB, violent crime and vehicle crime were top3 crimes
 
-crime_cln <- crime |> 
-    filter
-
+#--Stop and search
 stop_cln <- stop |> 
     filter(outcome != "A no further action disposal") |>
     mutate(date = date(datetime)) |>
@@ -122,6 +120,8 @@ stop_cln <- stop |>
             grepl("Other", self_defined_ethnicity) ~ "Other"
         )
     )
+
+#---QC
 table(stop_cln$self_defined_ethnicity_upper == stop_cln$officer_defined_ethnicity)
 table(stop_cln$legislation)
 unique(stop_cln$self_defined_ethnicity_upper)
