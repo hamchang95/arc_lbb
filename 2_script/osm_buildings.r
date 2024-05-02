@@ -3,7 +3,7 @@
 rm(list = ls())
 
 #--Install / load packages
-pacman::p_load(sf, httr, jsonlite, here, tmap, osmdata, tidyverse, data.table, rmapshaper, xml2, rvest)
+pacman::p_load(sf, httr, jsonlite, here, tmap, osmdata, tidyverse, data.table, rmapshaper, xml2, rvest, mapview)
 
 #--Get Barnet polygon
 bnt_bb <- getbb("London Borough of Barnet", format_out = "polygon")
