@@ -4,13 +4,15 @@ rm(list = ls())
 
 #--Options
 options(timeout = 120)
+API_KEY <- "AIzaSyCjxhelYNRXnXvyzdg9q79XIXiXMuqWB9A"
+Sys.setenv(GOOGLEGEOCODE_API_KEY = API_KEY)
 
 #--Install / load packages
 pacman::p_load(sf, httr, jsonlite, here, tmap, osmdata, tidyverse, utf8, data.table, rmapshaper, xml2, rvest, rio, tidygeocoder)
 
 #--Import data
-cctv_safety_raw <- rio::import(here("1_data", "cctv_list_1223.csv"))
-cctv_traffic_raw <- rio::import(here("1_data", "cctv_traffic_list.csv"))
+cctv_safety_raw <- rio::import(here("1_data", "cctv_list_1223.csv")) #cctvs installed for community safety
+cctv_traffic_raw <- rio::import(here("1_data", "cctv_traffic_list.csv")) #cctvs on roads for traffic control
 
 #--Tidy names
 names(cctv_safety_raw) <- str_to_lower(names(cctv_safety_raw))
@@ -24,7 +26,12 @@ str(cctv_safety_raw)
 str(cctv_traffic_raw)
     #location_description includes street name and outcode
 
-#--Geocode
+#--Get bounding box of Barnet
+bb_lbb <- osmdata::getbb("London Barnet") |>
+    as.data.frame()
+
+#--Tidy up & geocode
+#---Using ArcGIS geocoder
 cctv_safety <- cctv_safety_raw |> 
     mutate(across(where(is.character), ~utf8::utf8_encode(.x))) |>
     mutate(location = gsub("\\s*\\([^\\)]+\\)", "", location)) |>
@@ -34,28 +41,40 @@ cctv_safety <- cctv_safety_raw |>
     tidygeocoder::geocode(
         address = cleaned_location, 
         method = "arcgis"
-    )
+    ) # Converts street into lat & long  
 
+#---QC
+cctv_safety <- cctv_safety |> 
+    mutate(check_long = ifelse(long >= bb_lbb$min[1] & long <= bb_lbb$max[1], TRUE, FALSE)) |>
+    mutate(check_lat = ifelse(lat >= bb_lbb$min[2] & long <= bb_lbb$max[2], TRUE, FALSE)) |>
+    mutate(true_address = ifelse(check_lat == TRUE & check_long == TRUE, 1, 0)) 
+    
+cctv_safety |> 
+    summarise(total = sum(true_address, na.rm = TRUE))
+    # only 1 address is TRUE
+
+#---Using OSM geocoder
 cctv_safety_v2 <- cctv_safety |> 
     tidygeocoder::geocode(
         address = cleaned_location, 
         method = "osm"
     ) 
-    
+#----For OSM geocoder, two pairs of potential lat & long are returned
 cctv_safety_v2 <- cctv_safety_v2|>
     mutate(lat = coalesce(`lat...6`, `lat...8`)) |> 
-    mutate(long = coalesce(`long...7`, `long...9`)) |>
-    mutate(lat = case_when(
-        cleaned_location == "High Road" ~ `lat...6`,
-        .default = lat
-    )) |>
-    mutate(long = case_when(
-        cleaned_location == "High Road" ~ `long...7`,
-        .default = long
-    ))
+    mutate(long = coalesce(`long...7`, `long...9`)) 
 
-names(cctv_safety_v2) <- paste0(names(cctv_safety_v2), "_osm")
+#---QC
+cctv_safety_v2 <- cctv_safety_v2 |> 
+    mutate(check_long = ifelse(long >= bb_lbb$min[1] & long <= bb_lbb$max[1], TRUE, FALSE)) |>
+    mutate(check_lat = ifelse(lat >= bb_lbb$min[2] & long <= bb_lbb$max[2], TRUE, FALSE)) |>
+    mutate(true_address = ifelse(check_lat == TRUE & check_long == TRUE, 1, 0)) 
+    
+cctv_safety_v2 |> 
+    summarise(total = sum(true_address, na.rm = TRUE))
+    # only 1 address is TRUE
 
+#---Using Google geocoder
 cctv_safety_v3 <- cctv_safety |> 
     tidygeocoder::geocode(
         address = cleaned_location, 
@@ -63,59 +82,18 @@ cctv_safety_v3 <- cctv_safety |>
     ) 
 
 cctv_safety_v3 <- cctv_safety_v3|>
-    mutate(lat = coalesce(`lat...6`, `lat...8`)) |> 
-    mutate(long = coalesce(`long...7`, `long...9`)) |>
-    mutate(lat = case_when(
-        cleaned_location == "High Road" ~ `lat...6`,
-        .default = lat
-    )) |>
-    mutate(long = case_when(
-        cleaned_location == "High Road" ~ `long...7`,
-        .default = long
-    )) |>
-    mutate(lat = round(lat, 5), long = round(long, 5))
+    mutate(lat = coalesce(`lat...6`, `lat...11`)) |> 
+    mutate(long = coalesce(`long...7`, `long...12`))
 
-names(cctv_safety_v3) <- paste0(names(cctv_safety_v3), "_google")
-
-cctv_safety_total <- cctv_safety |> 
-    left_join(cctv_safety_v2[c("cleaned_location_osm", "lat_osm", "long_osm")], by=join_by("cleaned_location" == "cleaned_location_osm")) |>
-    mutate(lat = case_when(
-        is.na(lat) & !is.na(lat_osm) ~ lat_osm,
-        .default = lat
-    )) |>
-    mutate(long = case_when(
-        is.na(long) & !is.na(long_osm) ~ long_osm,
-        .default = long
-    ))|>
-    mutate(lat = round(lat, 5), long = round(long, 5)) 
-    drop(duplicated(.))
+#---QC
+cctv_safety_v3 <- cctv_safety_v3 |> 
+    mutate(check_long = ifelse(long >= bb_lbb$min[1] & long <= bb_lbb$max[1], TRUE, FALSE)) |>
+    mutate(check_lat = ifelse(lat >= bb_lbb$min[2] & long <= bb_lbb$max[2], TRUE, FALSE)) |>
+    mutate(true_address = ifelse(check_lat == TRUE & check_long == TRUE, 1, 0)) 
     
+cctv_safety_v3 |> 
+    summarise(total = sum(true_address, na.rm = TRUE))
+    # only 1 TRUE address
 
-cctv_safety$lat |> is.na() |> sum()
-cctv_safety_v2$lat_osm |> is.na() |> sum()
-cctv_safety_v3$lat |> is.na() |> sum()
-cctv_safety_total$lat |> is.na() |> sum()
-table(cctv_safety_v3$lat == cctv_safety_total$lat)
-
-Sys.setenv(GOOGLEGEOCODE_API_KEY = API_KEY)
-
-cctv_traffic <- cctv_traffic_raw |> 
-    separate(location_description, into = paste0("outcode_", letters[1:20]), remove = FALSE) |>
-    mutate(across(paste0("outcode_", letters[1:20]), ~ifelse(grepl("(NW|HA|EN|N\\d)", .x), .x, NA))) |>
-    select(-paste0("outcode_", letters[15:20])) 
-
-lapply(cctv_traffic[,letters[1:20]], unique)
-
-outcode_cols <- names(cctv_traffic)[grepl("outcode_", names(cctv_traffic))]
-
-for (i in 1:(length(outcode_cols)-1)){
-    cctv_traffic$outcode <- coalesce(cctv_traffic$outcode, cctv_traffic[[outcode_cols[i]]], cctv_traffic[[outcode_cols[i+1]]])
-}
-
-cctv_traffic <- cctv_traffic |> 
-    select(-paste0("outcode_", letters[1:14])) |>
-    relocate(outcode, .after = location_description)
-
-
-API_KEY <- "AIzaSyCjxhelYNRXnXvyzdg9q79XIXiXMuqWB9A"
-
+######### CONCLUSION ########
+# Cannot geocode address column for CCTV cameras
