@@ -39,7 +39,15 @@ names(dict)
 get_features <- function(key, value) {
     data <- opq(bnt_bb) |> 
         add_osm_feature(key = key, value = value) |> 
-        osmdata_sf()
+        osmdata_sf() 
+
+    null_test <- map(data, ~is.null(.x))
+
+    not_null_cols <- null_test[null_test == FALSE] |> names()
+
+    not_null_osm <- not_null_cols[grepl("osm", not_null_cols)]
+
+    data <- data[names(data) %in% not_null_osm]
 
     return(data)
 }
@@ -58,6 +66,7 @@ public_transport_list <- map(seq_along(dict[[2]][["Value"]]), function(i) {
   get_features("public_transport", dict[[2]][["Value"]][[i]])
 })
 names(public_transport_list) <- dict[[2]][["Value"]]
+public_transport_osm_list <- map(public_transport_list, ~names(.x))
 
 #--Building
 building_list <- vector("list", length(dict[[3]][["Value"]]))
@@ -65,9 +74,42 @@ building_list <- map(seq_along(dict[[3]][["Value"]]), function(i) {
   get_features("building", dict[[3]][["Value"]][[i]])
 })
 names(building_list) <- dict[[3]][["Value"]]
+building_osm_list <- map(building_list, ~names(.x))
 
 ######### PLOT ###############
-ggplot() + 
-geom_sf(data = bnt_bdry[["osm_multipolygons"]])+
-geom_sf(data = building_list[["hotel"]][["osm_points"]])+
-theme_minimal()
+#--Public transport
+map_amenity <- list()
+
+for (i in seq_along(amenity_list)){
+  map_amenity[[i]] <- ggplot() + 
+    geom_sf(data = bnt_bdry[["osm_multipolygons"]])+
+    geom_sf(data = amenity_list[[i]][["osm_points"]])+
+    theme_minimal()
+}
+#names(amenity_list)
+#map_amenity[[62]]
+
+#--Public transport
+map_transport <- list()
+
+for (i in seq_along(public_transport_list)){
+  map_transport[[i]] <- ggplot() + 
+    geom_sf(data = bnt_bdry[["osm_multipolygons"]])+
+    geom_sf(data = public_transport_list[[i]][["osm_points"]])+
+    theme_minimal()
+}
+#map_transport[[1]]
+#names(public_transport_list)
+
+#--Building
+map_building <- list()
+
+for (i in seq_along(building_list)){
+  map_building[[i]] <- ggplot() + 
+    geom_sf(data = bnt_bdry[["osm_multipolygons"]])+
+    geom_sf(data = building_list[[i]][["osm_points"]])+
+    theme_minimal()
+}
+
+#map_building[[2]] 
+#names(building_list)
