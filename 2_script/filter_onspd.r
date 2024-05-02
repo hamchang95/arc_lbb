@@ -6,7 +6,7 @@ rm(list = ls())
 pacman::p_load(here, tidyverse, data.table, rio)
 
 #-Path setting
-path_home <- getwd()
+path_home <- here()
 path_data <- paste0(path_home, "/1_data")
 path_output <- paste0(path_home, "/3_output")
 
