@@ -156,4 +156,4 @@ map_park <- ggplot() +
     #geom_sf(data = bnt_bdry[["osm_multipolygons"]])+
     #geom_sf(data = water_list[["osm_polygons"]], colour = "#00828b")+
     #geom_sf(data = water_list[["osm_multipolygons"]], colour = "lightblue")+
-    #geom_sf(data = test[["osm_points"]])
+    #geom_sf(data = test[["osm_points"]]) 
