@@ -78,7 +78,9 @@ get_data <- function(url, poly, date){
 str(crime)
 lapply(crime[,c(1:2)], table)
 
-
+#--Select necessary columns
+crime <- crime |> 
+  dplyr::select(category, id, month, contains("location"))
     
 #stop <- get_data(url = pth_stp, poly = coords_list, date = dt_list)
 str(stop)

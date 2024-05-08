@@ -40,11 +40,11 @@ ggplot(bnt_poly) +
 
 #--Get list of features with values on OSM
 dict <- import_list(here("0_ref", "places.xlsx")) 
-dict <- dict[-c(1,2)]
+dict <- dict[-c(1,2)] #first two sheets are irrelevant
 dict <-map(dict, 
     ~.x |>
         filter(Use == 1) |>
-        select(Value)
+        select(Key, Value)
 )
 names(dict)
 
@@ -89,6 +89,22 @@ building_list <- map(seq_along(dict[[3]][["Value"]]), function(i) {
 names(building_list) <- dict[[3]][["Value"]]
 building_osm_list <- map(building_list, ~names(.x))
 
+#--Shop
+shop_list <- vector("list", length(dict[[4]][["Value"]]))
+shop_list <- map(seq_along(dict[[4]][["Value"]]), function(i) {
+  get_features("shop", dict[[4]][["Value"]][[i]])
+})
+names(shop_list) <- dict[[4]][["Value"]]
+shop_osm_list <- map(shop_list, ~names(.x))
+
+#--Leisure
+leisure_list <- vector("list", length(dict[[5]][["Value"]]))
+leisure_list <- map(seq_along(dict[[5]][["Value"]]), function(i) {
+  get_features("leisure", dict[[5]][["Value"]][[i]])
+})
+names(leisure_list) <- dict[[5]][["Value"]]
+leisure_osm_list <- map(leisure_list, ~names(.x))
+
 #--Water
 water_list <- get_features("natural", "water")
 
@@ -97,16 +113,22 @@ park_list <- get_features("leisure", "park")
 
 
 ######### PLOT ##############
-#--Public transport
+#--Amenity
 map_amenity <- list()
+qc_amenity <- list()
 
 for (i in seq_along(amenity_list)){
   map_amenity[[i]] <- ggplot() + 
     geom_sf(data = bnt_bdry[["osm_multipolygons"]])+
     geom_sf(data = amenity_list[[i]][["osm_points"]])+
     theme_minimal()
+
+  qc_amenity[[i]] <- amenity_list[[i]][["osm_points"]] |>
+    st_within(bnt_poly) |> 
+    as.data.frame()
+  
+  names(qc_amenity) <- names(map_amenity) <- names(amenity_list) 
 }
-names(amenity_list)
 
 #--Public transport
 map_transport <- list()
@@ -118,28 +140,58 @@ for (i in seq_along(public_transport_list)){
     theme_minimal()
 }
 names(public_transport_list)
-map_transport[[1]]
-
-public_transport_list[[1]][["osm_polygons"]] |> 
-  st_within(bnt_poly) |>
-  as.data.frame() 
 
 #--Building
 map_building <- list()
+qc_building <- list()
 
 for (i in seq_along(building_list)){
   map_building[[i]] <- ggplot() + 
     geom_sf(data = bnt_bdry[["osm_multipolygons"]])+
     geom_sf(data = building_list[[i]][["osm_points"]])+
     theme_minimal()
+
+  qc_building[[i]] <- building_list[[i]][["osm_points"]] |>
+    st_within(bnt_poly) |> 
+    as.data.frame()
+
+   names(qc_building) <- names(map_building) <- names(building_list) 
 }
 
-names(building_list)
-map_building[[20]] 
 
-building_list[[16]][["osm_points"]] |> 
-  st_within(bnt_poly) |>
-  as.data.frame() 
+#--Shop
+map_shop <- list()
+qc_shop <- list()
+
+for (i in seq_along(shop_list)){
+  map_shop[[i]] <- ggplot() + 
+    geom_sf(data = bnt_bdry[["osm_multipolygons"]])+
+    geom_sf(data = shop_list[[i]][["osm_points"]])+
+    theme_minimal()
+
+  #qc_shop[[i]] <- shop_list[[i]][["osm_points"]] |>
+    #st_within(bnt_poly) |> 
+    #as.data.frame()
+
+  #names(qc_shop) <- names(map_shop) <- names(shop_list) 
+}
+
+#--Leisure
+map_leisure <- list()
+qc_leisure <- list()
+
+for (i in seq_along(leisure_list)){
+  map_leisure[[i]] <- ggplot() + 
+    geom_sf(data = bnt_bdry[["osm_multipolygons"]])+
+    geom_sf(data = leisure_list[[i]][["osm_points"]])+
+    theme_minimal()
+
+  #qc_leisure[[i]] <- leisure_list[[i]][["osm_points"]] |>
+    #st_within(bnt_poly) |> 
+    #as.data.frame()
+  
+  #names(qc_leisure) <- names(map_leisure) <- names(leisure_list) 
+}
 
 #--Park
 map_park <- ggplot() + 
@@ -147,13 +199,8 @@ map_park <- ggplot() +
     geom_sf(data = park_list[["osm_polygons"]], fill = "darkgreen")+
     theme_minimal()
 
-#######################
-#test <- opq(bnt_bb) |> 
-   #add_osm_feature(key = "building", value = "parking") |> 
-  #osmdata_sf() 
-
-#ggplot() + 
-    #geom_sf(data = bnt_bdry[["osm_multipolygons"]])+
-    #geom_sf(data = water_list[["osm_polygons"]], colour = "#00828b")+
-    #geom_sf(data = water_list[["osm_multipolygons"]], colour = "lightblue")+
-    #geom_sf(data = test[["osm_points"]]) 
+#--Water
+map_water <- ggplot() + 
+    geom_sf(data = bnt_bdry[["osm_multipolygons"]])+
+    geom_sf(data = water_list[["osm_polygons"]], colour = "#00828b")+
+    geom_sf(data = water_list[["osm_multipolygons"]], colour = "lightblue")
