@@ -9,6 +9,7 @@ crime <- rio::import(here::here("3_output", "crime_2024-05-09.csv")) |>
 #--Filter ASB - the most prevalent type of crime
 asb <- subset(crime, category == "anti social behaviour")
 
+####### COUNT CRIME BY LOCATION ID #########
 #--Calculate the frequency of ASB by location_id
 asb_count <- asb |> 
     group_by(location.latitude, location.longitude) |>
@@ -21,40 +22,22 @@ asb_count <- asb |>
     mutate(location_id = group_indices())
 
 names(asb_count)[1:2] <- c("y", "x")
-seq_len(nrow(asb_count))
-#--Define training set 
+#names(asb_count)[1:2] <- c("x2", "x1")
+
+#--Create random indices
 total_rows <- nrow(asb_count)
 sample_size <- round(total_rows * 0.75)
 
-# Generate random indices
 set.seed(1234)
 random_indices <- sample(1:total_rows, sample_size, replace = FALSE)
 
-# Create the test set using the random indices
-train_asb <- asb_count |> 
-filter(!location_id %in% random_generator) 
+#--Create the test set using the random indices
+train_asb <- asb_count |> filter(!location_id %in% random_generator) 
 
-t
 # Create the training set by excluding the indices used for the test set
 test_asb <-  asb_count |> filter(location_id %in% random_generator)
 
-  #leaflet::leaflet(st_as_sf(train_asb, coords = c('location.longitude', 'location.latitude'), crs=4326)) |>
-    #leaflet::addTiles() |>
-    #leaflet::addCircleMarkers(radius = 1, fillOpacity = 0.001) 
-
-############# BUILD VARIOGRAM ###########
-coordinates(train_asb) <- c("x", "y")
-proj4string(train_asb) <- CRS("+proj=longlat +datum=WGS84")
-coordinates(test_asb) <- c("x", "y")
-proj4string(test_asb) <- CRS("+proj=longlat +datum=WGS84")
-lzn.vgm <- variogram(log(n) ~ x+y, train_asb, width=0.1)
-lzn.fit = fit.variogram(lzn.vgm, vgm(c("Gau", "Sph", "Mat", "Exp")), fit.kappa = TRUE)
-
-#--Plot the curve function
-plot(lzn.vgm, lzn.fit, main = "Variogram Model Fit", cutoff = max(lzn.vgm$dist))
- # When the curve plateaus, the point pairs are no longer spatially correlated
-# Define the bounding box
-
+######## CREATE GRID ##########
 #--Import Barnet shapefile
 bnt_shp <- sf::st_read(here("1_data", "9_geo", "bnt_lad.json"), crs = 4326) 
 bnt_shp <- st_transform(bnt_shp, 4326)
@@ -90,6 +73,24 @@ plot(grid_sf, add = TRUE, col = 'red', pch = 16)
 
 coordinates(grid)|>head()
 
+############# BUILD VARIOGRAM ###########
+#--Convert train / test to sp
+coordinates(train_asb) <- c("x", "y")
+proj4string(train_asb) <- CRS("+proj=longlat +datum=WGS84")
+coordinates(test_asb) <- c("x", "y")
+proj4string(test_asb) <- CRS("+proj=longlat +datum=WGS84")
+
+#--Create variogram
+lzn.vgm <- variogram(log(n) ~ x+y, train_asb, width=0.1)
+
+#--Create the fitted curve line
+lzn.fit = fit.variogram(lzn.vgm, vgm(c("Gau", "Sph", "Mat", "Exp")), fit.kappa = TRUE)
+
+#--Plot the curve function
+plot(lzn.vgm, lzn.fit, main = "Variogram Model Fit", cutoff = max(lzn.vgm$dist))
+ # When the curve plateaus, the point pairs are no longer spatially correlated
+
+
 ######## KRIGE #######
 lzn.kriged <-krige(log(n) ~ x + y, train_asb, test_asb, model = lzn.fit, maxdist=10, nmax=50)
 
@@ -102,12 +103,12 @@ variance <- lzn.kriged@data$var1.var |>
   as.data.frame() |>
   rename(variance = 1) 
 
-grid_sf <- st_as_sf(test_asb, coords = c("x", "y"), crs = 4326)
-grid_sf$krige_pred <- predicted$krige_pred
-grid_sf$variance <- variance$variance
-length(grid_sf$krige_pred)
+test_sf <- st_as_sf(test_asb, coords = c("x", "y"), crs = 4326)
+test_sf$krige_pred <- predicted$krige_pred
+test_sf$variance <- variance$variance
+length(test_sf$krige_pred)
 ggplot() +
-  geom_sf(data = grid_sf, aes(colour = krige_pred)) +
+  geom_sf(data = test_sf, aes(colour = krige_pred)) +
   scale_colour_gradient(low = "blue", high = "red", name = "Predicted Value") +
   ggtitle("Hotspot Map for Kriged Data") +
   geom_sf(data = bnt_shp, alpha=0.1, lwd = 1.2)+
