@@ -68,9 +68,6 @@ grid <- SpatialPoints(grid_points, proj4string = CRS("+proj=longlat +datum=WGS84
 
 # Step 4: Filter grid points to include only those within the Barnet polygon
 grid <- grid[spd, ]
-str(grid)
-# Convert grid back to sf object if needed
-grid_sf <- st_as_sf(grid)
 
 # Optionally, visualize the result to ensure it covers the entire polygon
 plot(st_geometry(bnt_shp), col = 'lightblue', border = 'darkblue')
@@ -116,7 +113,7 @@ ggplot() +
 kriging_error = rmse(test_asb$n, test_sf$krige_pred)
 
 kriging_error; range(asb_count$n)
-  #13.6; 1-329
+  #12.9; 1-329
 
 #---Over Barnet grid 
 grid_sf <- st_as_sf(grid, coords = c("x", "y"), crs=4326)
@@ -126,7 +123,7 @@ grid_sf$var <- exp(bnt.kriged@data$var1.var)
 ggplot() +
   geom_sf(data = grid_sf, aes(colour = krige_pred)) +
   scale_colour_gradient(low = "blue", high = "red", name = "Predicted Value") +
-  ggtitle("Hotspot Map for Kriged Data") +
+  ggtitle("Hotspot Map for Kriged Data based on Location Coordinates") +
   geom_sf(data = bnt_shp, alpha=0.1, lwd = 1.2)+
   theme_minimal()
 
@@ -167,8 +164,6 @@ for (i in seq_along(crime_list)){
 asb <- crime_list[[1]]
 asb["id_money_exchange_transfer"] <- st_nearest_feature(asb, poi_bnt_fin[["money_exchange_transfer"]])
 
-names(asb)
-head(asb)
 #--Initialize columns in asb to store distances
 for (poi_name in names(poi_bnt_fin)) {
   asb[[paste0("d_", poi_name)]] <- NA
@@ -235,20 +230,20 @@ set.seed(1234)
 random_indices <- sample(1:total_rows, sample_size, replace = FALSE)
 
 #--Create the test set using the random indices
-train_asb <- asb_bike_count |> filter(location_id %in% random_indices)
+train_asb_bike <- asb_bike_count |> filter(location_id %in% random_indices)
 
 # Create the training set by excluding the indices used for the test set
-test_asb <-  asb_bike_count |> filter(!location_id %in% random_indices)
+test_asb_bike <-  asb_bike_count |> filter(!location_id %in% random_indices)
 
 ############# BUILD VARIOGRAM ###########
 #--Convert train / test to sp
-coordinates(train_asb) <- c("x", "y")
-proj4string(train_asb) <- CRS("+proj=longlat +datum=WGS84")
-coordinates(test_asb) <- c("x", "y")
-proj4string(test_asb) <- CRS("+proj=longlat +datum=WGS84")
+coordinates(train_asb_bike) <- c("x", "y")
+proj4string(train_asb_bike) <- CRS("+proj=longlat +datum=WGS84")
+coordinates(test_asb_bike) <- c("x", "y")
+proj4string(test_asb_bike) <- CRS("+proj=longlat +datum=WGS84")
 
 #--Create variogram
-bike.vgm <- variogram(log(n) ~ x+y+d_bicycle_parking, train_asb, width=0.1)
+bike.vgm <- variogram(log(n) ~ x+y+d_bicycle_parking, train_asb_bike, width=0.1)
 
 #--Create the fitted curve line
 bike.fit = fit.variogram(bike.vgm, vgm(c("Gau", "Sph", "Mat", "Exp")), fit.kappa = TRUE)
@@ -263,42 +258,50 @@ plot(bike.vgm, bike.fit, main = "Variogram Model Fit", cutoff = max(bike.vgm$dis
 distances <- st_distance(grid_sf, poi_bnt_fin[["bicycle_parking"]], by_element = FALSE)
 min_distances <- apply(distances, 1, min)
 
-grid[["d_bicycle_parking"]] <- min_distances
+grid$d_bicycle_parking <- min_distances
 
-######## KRIGE #######
-bike.kriged <-krige(log(n) ~ x + y + d_bicycle_parking, train_asb, test_asb, model = bike.fit, maxdist=10, nmax=50)
-bike.bnt.kriged <-krige(log(n) ~ x + y + d_bicycle_parking, train_asb, grid, model = bike.fit, maxdist=10, nmax=50)
+######## MULTI KRIGE TEST #######
+bike.kriged <-krige(log(n) ~ x + y + d_bicycle_parking, train_asb_bike, test_asb_bike, model = bike.fit, maxdist=10, nmax=50)
+bike.bnt.kriged <-krige(log(n) ~ x + y + d_bicycle_parking, train_asb_bike, grid, model = bike.fit, maxdist=10, nmax=50)
 
 #--Retrieve interpolated values
 #---Over test set
-test_sf <- st_as_sf(test_asb, coords = c("x", "y"), crs = 4326)
-test_sf$krige_pred <- exp(bike.kriged@data$var1.pred)
-test_sf$variance <- exp(bike.kriged@data$var1.var)
+test_bike_sf <- st_as_sf(test_asb_bike, coords = c("x", "y"), crs = 4326)
+test_bike_sf$krige_pred <- exp(bike.kriged@data$var1.pred)
+test_bike_sf$variance <- exp(bike.kriged@data$var1.var)
 
 ggplot() +
   geom_sf(data = test_sf, aes(colour = krige_pred)) +
   scale_colour_gradient(low = "blue", high = "red", name = "Predicted Value") +
-  ggtitle("Hotspot Map for Kriged Data") +
+  ggtitle("Hotspot Map for Kriged Data based on Location Coordinates and Distance to Closest Bike Parking") +
   geom_sf(data = bnt_shp, alpha=0.1, lwd = 1.2)+
   theme_minimal()
 
-kriging_error = rmse(test_asb$n, test_sf$krige_pred)
+#--Evaluate
+#---Kriging error
+kriging_error_bike = rmse(test_asb_bike$n, test_bike_sf$krige_pred)
 
-kriging_error; range(asb_bike_count$n)
-  #12.8; 1-329
+kriging_error; kriging_error_bike; range(asb_bike_count$n)
+  #12.7; 1-329
+
+#---Predicted values & variance
+range(test_bike_sf$krige_pred); range(test_sf$krige_pred)
+range(test_bike_sf$variance); range(test_sf$variance)
 
 #---Over grid
-grid_sf <- st_as_sf(grid, coords = c("x", "y"), crs = 4326)
-grid_sf$krige_pred <- exp(bike.bnt.kriged@data$var1.pred)
-grid_sf$variance <- exp(bike.bnt.kriged@data$var1.var)
+grid_bike_sf <- st_as_sf(grid, coords = c("x", "y"), crs = 4326)
+grid_bike_sf$krige_pred <- exp(bike.bnt.kriged@data$var1.pred)
+grid_bike_sf$variance <- exp(bike.bnt.kriged@data$var1.var)
 
 ggplot() +
-  geom_sf(data = grid_sf, aes(colour = krige_pred)) +
+  geom_sf(data = grid_bike_sf, aes(colour = krige_pred)) +
   scale_colour_gradient(low = "blue", high = "red", name = "Predicted Value") +
-  ggtitle("Hotspot Map for Kriged Data") +
+  labs(title = "Hotspot Map for Kriged Data based on\nLocation Coordinates and Distance to Nearest Bike Parking") +
   geom_sf(data = bnt_shp, alpha=0.1, lwd = 1.2)+
-  theme_minimal()
+  theme_minimal()+
+  theme(title = element_text(size = 9))
 
+########### MULTI KRIGE #############
 multi_krige <- function(data, poi){
   d_poi <- paste0("d_", poi)
 
@@ -447,22 +450,45 @@ multi_krige <- function(data, poi){
  
   return(list(kriging_error = kriging_error, grid_sf = grid_sf, test_sf = test_sf))
 }
-names(poi_bnt_fin)
-bike <- multi_krige(data = asb, poi = "bicycle_parking")
 
+#--Initialise
 multi_krige_list <- vector("list", length(poi_bnt_fin))
 
+#--Apply multi_krige() 
 for (i in seq_along(multi_krige_list)){
   multi_krige_list[[i]] <- multi_krige(data = asb, poi = names(poi_bnt_fin)[[i]])
   }
 
 names(multi_krige_list) <- names(poi_bnt_fin)
 
-kriging_error <- map(multi_krige_list, ~.x[["kriging_error"]])
-multi_krige_list[[1]][[2]][[5]]|> range()
-?krige
+#--Evaluate
+#---Krige
+kriging_error_multi <- map(multi_krige_list, ~.x[["kriging_error"]])
 
-kriging_error <- data.frame(poi = names(poi_bnt_fin), 
-error = unlist(kriging_error)) |> arrange(desc(error))
-rownames(kriging_error) <- NULL
-kriging_error
+kriging_error_df <- data.frame(poi = names(poi_bnt_fin), 
+error = unlist(kriging_error_multi)) |> arrange(desc(error))
+rownames(kriging_error_df) <- NULL
+kriging_error_df
+
+#---SD by category
+poi_category <- rio::import(here("0_ref", "poi_category.csv"))
+
+asb_dist <- asb |>
+  select(contains("d_") & -contains("id")) 
+
+asb_mean <- asb_dist |> 
+  summarise_all(mean) |>
+  pivot_longer(cols = everything(), names_to = "poi", values_to = "mean_distance_to_nearest_poi") |>
+  arrange(desc(mean_distance_to_nearest_poi)) 
+
+asb_median <- asb_dist |> 
+  summarise_all(median) |>
+  pivot_longer(cols = everything(), names_to = "poi", values_to = "median_distance_to_nearest_poi") |>
+  arrange(desc(median_distance_to_nearest_poi)) 
+
+asb_mean_median <- poi_category |>
+  left_join(asb_mean) |>
+  left_join(asb_median) 
+
+asb_mean_median |> group_by(poi_category) |> summarise(across(where(is.numeric), ~sd(.x, na.rm=TRUE))) |> 
+  arrange(desc(median_distance_to_nearest_poi))
