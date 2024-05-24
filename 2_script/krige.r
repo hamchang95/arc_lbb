@@ -492,3 +492,6 @@ asb_mean_median <- poi_category |>
 
 asb_mean_median |> group_by(poi_category) |> summarise(across(where(is.numeric), ~sd(.x, na.rm=TRUE))) |> 
   arrange(desc(median_distance_to_nearest_poi))
+
+###### EXPORT #######
+rio::export(asb, here::here("3_output", "asb_with_nearest_distances.csv"))
