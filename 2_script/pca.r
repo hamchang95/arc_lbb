@@ -131,6 +131,7 @@ desc <- dimdesc(pca, axes = c(1,2), proba = 0.05)
 desc$Dim.1
 desc$Dim.2
 
+
 ####### USING PRINCOMP() ######
 #--Correlation matrix
 corr_matrix <- cor(asb_norm)
