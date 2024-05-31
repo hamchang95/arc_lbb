@@ -102,16 +102,15 @@ proj4string(x_train_pred_df) <- CRS("+proj=longlat +datum=WGS84")
 proj4string(x_test_pred_df) <- CRS("+proj=longlat +datum=WGS84")
 
 ###### KRIGING ######
-
 #--Combine PCA-transformed predictors with the target variable for training data
-train_data <- as.data.frame(x_train_pred_df)
-train_data$n <- y_train_sf$n
+train_data <- cbind(x_train_pred_df, n = y_train_sf$n)
+names(train_data)[8] <- "n" 
 
 #--Combine PCA-transformed predictors with the target variable for test data
-test_data <- as.data.frame(x_test_pred_df)
-test_data$n <- y_test_sf$n
+test_data <- cbind(x_test_pred_df, n = y_test_sf$n)
+names(test_data)[8] <- "n"
 
-# Create variogram using PCA-transformed predictors
+#--Create variogram using PCA-transformed predictors
 formula <- as.formula(paste("log(n) ~", paste(names(x_train_pred_df)[1:7],
 collapse = " + ")))
 
@@ -120,22 +119,86 @@ lzn.vgm <- variogram(
     data = train_data, 
     width = 0.1)
 
-# Fit variogram model
+#--Fit variogram model
 lzn.fit <- fit.variogram(lzn.vgm, vgm(c("Gau", "Sph", "Mat", "Exp")), fit.kappa = TRUE)
 
-# Plot variogram model fit
+#--Plot variogram model fit
 plot(lzn.vgm, lzn.fit, main = "Variogram Model Fit", cutoff = max(lzn.vgm$dist))
 
-# Kriging over the test set
-lzn.kriged <- krige(log(n) ~ ., train_data, test_data, model = lzn.fit, maxdist = 10, nmax = 50)
+#--Kriging over the test set
+lzn.kriged <- krige(formula, train_data, test_data, model = lzn.fit, maxdist = 10, nmax = 50)
 
-# Convert grid points to SpatialPoints
-grid_points <- expand.grid(x = x_test_sf$x, y = y_test_sf$y)
+####### CREATE GRID #######
+train_data |> head()
+spd_data |> head()
+#--Import Barnet shapefile
+bnt_shp <- sf::st_read(here("1_data", "9_geo", "bnt_lad.json"), crs = 4326)
+bnt_shp <- st_transform(bnt_shp, 4326)
+
+spd <- sf::as_Spatial(st_geometry(bnt_shp), IDs = as.character(1:nrow(bnt_shp)))
+  
+spd_data <- bnt_shp
+spd_data$geometry = NULL
+spd_data <- as.data.frame(spd_data)
+spd <- sp::SpatialPolygonsDataFrame(spd, data = spd_data)
+  
+#--Get the bounding box of the polygon and expand it slightly
+bbox <- bbox(spd)
+cellsize = 0.001
+x_range <- seq(from = bbox[1,1] - cellsize, to = bbox[1,2] + cellsize, by = cellsize)
+y_range <- seq(from = bbox[2,1] - cellsize, to = bbox[2,2] + cellsize, by = cellsize)
+  
+#--Create a data.frame of grid points
+grid_points <- expand.grid(x = x_range, y = y_range)
+
 coordinates(grid_points) <- ~ x + y
 proj4string(grid_points) <- CRS("+proj=longlat +datum=WGS84")
 
+# Create a dataframe for PCA transformation of grid points
+grid_data <- as.data.frame(grid_points) |>
+    distinct(y, x) |>
+    left_join(st_drop_geometry(x_train_sf))
+    st_drop_geometry() 
+    select(-geometry, -x, -y)
+
+# Normalize grid data using the same scaling parameters as the training data
+grid_data_scaled <- scale(grid_data, center = attr(x_train_norm, "scaled:center"), scale = attr(x_train_norm, "scaled:scale"))
+
+# Predict PCA components for grid data
+grid_pca_pred <- predict(x_train_pca, newdata = grid_data_scaled)
+
+# Add PCA components to grid data
+grid_pca_df <- as.data.frame(grid_pca_pred$coord)
+grid_data <- cbind(grid_data, grid_pca_df)
+
+grid_data |> tail()
+
+tail(x_train_sf[,c('x', 'y', 'd_pub')])
+x_train_sf$x[1:5]
+grid_data$x[1:5]
+map(grid_data, ~sum(is.na(.x)))
+
+# Convert grid data to SpatialPointsDataFrame
+coordinates(grid_data) <- ~ x + y
+proj4string(grid_data) <- CRS("+proj=longlat +datum=WGS84")
+
+######## KRIGING OVER GRID #######
 # Kriging over the grid
-bnt.kriged <- krige(log(n) ~ ., train_data, grid_points, model = lzn.fit, maxdist = 10, nmax = 50)
+bnt.kriged <- krige(formula, train_data, grid_data, model = lzn.fit, maxdist = 10, nmax = 50)
+
+# Retrieve interpolated values for test data
+test_sf <- st_as_sf(test_data, coords =
+
+
+
+
+
+
+
+
+
+#--Kriging over the grid
+bnt.kriged <- krige(formula, train_data, grid_points, model = lzn.fit, maxdist = 10, nmax = 50)
 
 # Retrieve interpolated values for test data
 test_sf <- st_as_sf(test_data, coords = c("x", "y"), crs = 4326)
