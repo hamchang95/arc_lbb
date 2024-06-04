@@ -1,27 +1,27 @@
 {
     "r.bracketedPaste": true,
-    "r.rterm.windows": "C:/Program Files/R/R-4.3.2/bin/R.exe", //"C:\\Program Files\\R\\R-4.3.1\\bin\\R.exe", //Use this only for Windows 
-    "r.rterm.linux": "*Path to radian executable*", //Use this only for Linux
-    "r.rterm.mac": "*Path to radian executable*", //Use this only for a Mac
-    "r.lsp.path": "*Path to your R executable*",
-    "r.lsp.debug": true,
-    "r.lsp.diagnostics": true,
-    "r.rterm.option": [
-    "--no-save",
-    "--no-restore",
-    "--r-binary=**"
-    ],
+    "r.rterm.windows": "C:/Users/Hannah.Chang/AppData/Local/Programs/R/R-4.2.3/bin/x64/R.exe", 
+    "r.rterm.linux": "*Path to radian executable*", 
+    "r.rterm.mac": "*Path to radian executable*", 
     "terminal.integrated.defaultProfile.windows": "R Terminal",
-    "r.rpath.windows": "C:/Program Files/R/R-4.3.2/bin/R.exe", //"C:\\Program Files\\R\\R-4.3.1\\bin\\R.exe",
-    "workbench.settings.applyToAllProfiles": [
-        "r.rpath.windows"
-    ],
+    "r.rpath.windows": "C:/Users/Hannah.Chang/AppData/Local/Programs/R/R-4.2.3/bin/x64/R.exe", 
     "editor.minimap.enabled": false,
     "notebook.output.scrolling": true,
     "git.enableSmartCommit": true,
-    "workbench.editor.enablePreview": true,
+    "workbench.editor.enablePreview": false,
     "workbench.statusBar.visible": false,
     "git.confirmSync": false,
-    "r.plot.useHttpgd": true,
     "git.ignoreLimitWarning": true,
+    "r.plot.useHttpgd": true,
+    "r.alwaysUseActiveTerminal": true,
+    "files.associations": {
+        "*.rmd": "markdown"
+    },
+    "r.libPaths": [
+        "C:/Users/Hannah.Chang/AppData/Local/Programs/R/R-4.2.3/library"
+    ],
+    "settingsSync.ignoredExtensions": [
+        "reditorsupport.r"
+    ],
+    "r.rmarkdown.knit.defaults.knitWorkingDirectory": "workspace root",
     }

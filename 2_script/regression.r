@@ -1,3 +1,4 @@
+names(poi_bnt_fin)
 ####### REGRESSION ###
 #--Single linear regression
 mod_parking <- map(ct_all, ~lm(n ~ amenity_parking, data = .x) |> summary()) 
