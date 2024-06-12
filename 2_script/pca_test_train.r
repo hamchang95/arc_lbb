@@ -183,7 +183,8 @@ ggplot(data = grid_sf, aes(x, y)) +
     ggtitle("All the points in the grids within Barnet boundary") +
     theme_minimal()
 
-#--Reproject POIs to same CRS 
+#--Reproject POIs to same CRS
+load("pre_pca_multi_krige.RData")
 poi_bnt_osgb <- lapply(poi_bnt_fin, function(x) st_transform(x, 27700))
 
 #--Convert POI to matrix
