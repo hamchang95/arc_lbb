@@ -132,22 +132,23 @@ rmse(test_sf$n, test_sf$krige_pred)
 
 ####### CREATE GRID #######
 #--Import Barnet shapefile
-bnt_shp <- sf::st_read(here("1_data", "9_geo", "bnt_lad.json"), crs = 27700)
+bnt_shp <- sf::st_read(here("1_data", "9_geo", "bnt_lad.json"), crs = 4326)
 
+#--
 #--Convert sf object to SpatialPolygonsDataFrame
-spd <- sf::as_Spatial(st_geometry(bnt_shp), IDs = as.character(1:nrow(bnt_shp)))
+#spd <- sf::as_Spatial(st_geometry(bnt_shp), IDs = as.character(1:nrow(bnt_shp)))
 
 #--Extract the data from the shapefile
-spd_data <- bnt_shp
+#spd_data <- bnt_shp
 
 #--Remove geometry column from the data frame
-spd_data$geometry <- NULL
+#spd_data$geometry <- NULL
 
 #--Convert to a regular data frame
-spd_data <- as.data.frame(spd_data)
+#spd_data <- as.data.frame(spd_data)
 
 #--Combine spatial data with attribute data
-spd <- sp::SpatialPolygonsDataFrame(spd, data = spd_data)
+#spd <- sp::SpatialPolygonsDataFrame(spd, data = spd_data)
 
 #--Get the bounding box of the polygon and expand it slightly
 bbox <- bbox(spd)
@@ -159,14 +160,16 @@ y_range <- seq(from = bbox[2,1] - cellsize, to = bbox[2,2] + cellsize, by = cell
 grid_points <- expand.grid(x = x_range, y = y_range)
 
 #--Convert grid points to SpatialPoints
-grid <- SpatialPoints(grid_points, proj4string = CRS("+init=epsg:27700"))
+grid <- SpatialPoints(grid_points, proj4string = CRS("+init=epsg:4326"))
 
 #--Filter grid points to include only those within the Barnet polygon
 grid <- grid[spd, ]
 
 #--Convert sp SpatialPoints to sf
 grid_sf <- grid |> 
-    st_as_sf(crs = 27700) 
+    st_as_sf()
+
+grid_sf <- st_transform(grid_sf, 27700)
 
 #--Get coordinates    
 grid_sf <- grid_sf |> 
@@ -176,46 +179,50 @@ grid_sf <- grid_sf |>
 
 #--Check
 ggplot(data = grid_sf, aes(x, y)) +
-    geom_point()
+    geom_point() +
+    ggtitle("All the points in the grids within Barnet boundary") +
+    theme_minimal()
 
 #--Reproject POIs to same CRS 
-poi_bnt_fin <- map(poi_bnt_fin, ~st_transform(.x, 27700))
+poi_bnt_osgb <- lapply(poi_bnt_fin, function(x) st_transform(x, 27700))
 
 #--Convert POI to matrix
-poi_coords_list <- lapply(poi_bnt_fin, st_coordinates)
+poi_coords_list <- lapply(poi_bnt_osgb, st_coordinates)
 
 #--Convert grid_sf to matrix
 grid_coords_list <- grid_sf |>
     st_drop_geometry()
 
 #--Calculate distances 
-poi_x <- map(poi_coords_list, ~.x[, 1])  # Extract x-coordinates of POIs
-poi_y <- map(poi_coords_list, ~.x[, 2])  # Extract y-coordinates of POIs
+poi_x <- lapply(poi_coords_list, function(x) x[, 1])  # Extract x-coordinates of POIs
+poi_y <- lapply(poi_coords_list, function(x) x[, 2])  # Extract y-coordinates of POIs
 grid_x <- grid_coords_list[, 1]  # Extract x-coordinates of grid points
 grid_y <- grid_coords_list[, 2]  # Extract y-coordinates of grid points
 
 #--Initialize distances list with empty lists
-distances <- vector("list", length = length(poi_x))
-min_distances <- matrix(nrow = length(grid_x), ncol = length(poi_x), NA)  # Pre-allocate with NAs
+min_distances <- matrix(nrow = length(grid_x), ncol = length(poi_x))  # Pre-allocate with NAs
 
+#--Loop minimum distance calculation 
 for (i in seq_along(poi_x)) {
-  distances[[i]] <- vector("list", length = length(poi_x[[i]]))
-  # Pre-allocate squared distances for efficiency
+  # Pre-allocate squared distances
   squared_distances <- matrix(nrow = length(grid_x), ncol = length(poi_x[[i]]))
+  
   for (j in seq_along(poi_x[[i]])) {
     squared_distances[, j] <- sqrt((grid_x - poi_x[[i]][j])^2 + (grid_y - poi_y[[i]][j])^2)
   }
-  # Calculate minimum distance for each POI point efficiently
-  min_distances[ ,i] <- min(t(squared_distances))  # Store minimum for current POI
+  
+  # Calculate minimum distance for each grid point for current POI type 
+  min_distances[, i] <- apply(squared_distances, 1, min)  # Store minimum for current POI type
 }
 
-names(min_distances) <- paste0("d_", names(poi_bnt_fin))
+#--Convert the min_distances matrix to a data frame for easier use
+min_distances_df <- as.data.frame(min_distances)
+names(min_distances_df) <- paste0("d_", names(poi_bnt_fin))
 
 #--Add distance columns to the grid_sf
-grid_sf <- cbind(grid_sf, min_distances)
+grid_sf <- cbind(grid_sf, min_distances_df)
+names(grid_sf)[3:50] <- names(min_distances_df)
 
-names(grid_sf)[3:50] <- names(min_distances)
- 
 #--Convert sf to df
 grid_df <- st_drop_geometry(grid_sf)
 
@@ -230,6 +237,7 @@ grid_data <- cbind(grid_df, grid_pca_df)
 coordinates(grid_data) <- ~ x + y
 proj4string(grid_data) <- CRS("+init=epsg:27700")
 
+min_distances_df |> head()
 ######## KRIGING OVER GRID #######
 #--Kriging over the grid
 bnt.kriged <- krige(
@@ -239,16 +247,29 @@ bnt.kriged <- krige(
     model = lzn.fit)
 
 #--Plot
-grid_sf <- st_as_sf(grid_data, coords = c("x", "y"), crs = 27700)
-grid_sf$krige_pred <- exp(bnt.kriged@data$var1.pred)
-grid_sf$variance <- exp(bnt.kriged@data$var1.var)
-grid_sf$x <- st_coordinates(grid_sf)[, 1]
-grid_sf$y <- st_coordinates(grid_sf)[, 2]
+grid_fin <- st_as_sf(grid_data, coords = c("x", "y")) |> 
+    st_transform(27700)
+grid_fin$krige_pred <- exp(bnt.kriged@data$var1.pred)
+grid_fin$variance <- exp(bnt.kriged@data$var1.var)
+grid_fin$x <- st_coordinates(grid_fin)[, 1]
+grid_fin$y <- st_coordinates(grid_fin)[, 2]
 
-ggplot(data = grid_sf, aes(x, y)) +
+ggplot(data = grid_fin, aes(x, y)) +
   geom_point(aes(colour = krige_pred)) +
-  scale_colour_gradient(low = "blue", high = "red", name = "Predicted Value") +
+  scale_colour_gradient(low = "green", high = "red", name = "Predicted Value") +
   ggtitle("Hotspot Map for Kriged Data") +
   theme_minimal()
 
-rmse(grid_sf$n, grid_sf$krige_pred)  
+grid_fin_wgs84 <- st_transform(grid_fin, 4326) 
+
+grid_fin_wgs84 <- grid_fin_wgs84 |>
+    mutate(x = st_coordinates(grid_fin_wgs84)[, 1],
+           y = st_coordinates(grid_fin_wgs84)[, 2])
+summary(grid_fin_wgs84$krige_pred)
+
+pal <- colorNumeric(palette = c("green", "red"), domain = grid_fin_wgs84$krige_pred)
+
+leaflet(grid_fin_wgs84) |> 
+    leaflet::addTiles() |>
+    leaflet::addCircles(color = ~pal(grid_fin_wgs84$krige_pred), opacity = 0.6)
+
